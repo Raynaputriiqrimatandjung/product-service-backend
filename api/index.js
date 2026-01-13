@@ -1,4 +1,4 @@
-// FILE: product-service/index.js
+// FILE: product-service/api/index.js
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -7,22 +7,30 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// --- PERUBAHAN DI SINI ---
-// Mengambil link MONGO_URL dari settingan Vercel/Railway
-const mongoURI = process.env.MONGO_URL; 
+// 1. KONEKSI DATABASE
+const mongoURI = process.env.MONGO_URL;
 
-// Opsi tambahan agar koneksi stabil di Vercel
+if (!mongoURI) {
+    console.error("❌ Error: MONGO_URL belum disetting di Environment Variable Vercel!");
+}
+
 mongoose.connect(mongoURI, {
-    serverSelectionTimeoutMS: 5000 
+    serverSelectionTimeoutMS: 5000
 })
-    .then(() => console.log('MongoDB Product Service Connected... ✅'))
-    .catch(err => console.error('DB Connection Error: ❌', err));
+    .then(() => console.log('✅ MongoDB Product Service Connected...'))
+    .catch(err => console.error('❌ DB Connection Error:', err));
 
-// Model Produk (Sesuai kode asli Anda)
-const Product = mongoose.model('Product', {
+// 2. MODEL PRODUK (Definisi langsung di sini agar tidak error path)
+// Menggunakan 'mongoose.models.Product ||' untuk mencegah error Overwrite di Vercel
+const Product = mongoose.models.Product || mongoose.model('Product', {
     name: String,
     price: Number,
     stock: Number
+});
+
+// 3. RUTE UTAMA (Health Check)
+app.get('/', (req, res) => {
+    res.json({ message: "Product Service is Running... 🚀" });
 });
 
 // READ ALL
@@ -57,7 +65,7 @@ app.get('/products/:id', async (req, res) => {
     }
 });
 
-// Listener (Penting untuk Vercel)
+// Listener
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Product Service running on port ${PORT}`));
 
