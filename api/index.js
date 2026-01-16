@@ -7,43 +7,53 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// 1. KONEKSI DATABASE
-const mongoURI = process.env.MONGO_URL;
+mongoose.connect(process.env.MONGO_URL, { serverSelectionTimeoutMS: 5000 })
+    .then(() => console.log('✅ Product Service DB Connected...'))
+    .catch(err => console.error('❌ DB Error:', err));
 
-if (!mongoURI) {
-    console.error("❌ Error: MONGO_URL belum disetting di Environment Variable Vercel!");
-}
-
-mongoose.connect(mongoURI, {
-    serverSelectionTimeoutMS: 5000
-})
-    .then(() => console.log('✅ MongoDB Product Service Connected...'))
-    .catch(err => console.error('❌ DB Connection Error:', err));
-
-// 2. MODEL PRODUK (Definisi langsung di sini agar tidak error path)
-// Menggunakan 'mongoose.models.Product ||' untuk mencegah error Overwrite di Vercel
-const Product = mongoose.models.Product || mongoose.model('Product', {
-    name: String,
-    price: Number,
-    stock: Number
+// --- MODEL PRODUK (UPDATE LENGKAP) ---
+const ProductSchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    price: { type: Number, required: true },
+    stock: { type: Number, required: true },
+    category: { type: String, default: 'Umum' }, // beras, minyak, dll
+    image: { type: String, default: 'https://placehold.co/300x300?text=No+Image' }, // Link gambar
+    description: { type: String, default: '-' },
+    is_active: { type: Boolean, default: true }
 });
 
-// 3. RUTE UTAMA (Health Check)
-app.get('/', (req, res) => {
-    res.json({ message: "Product Service is Running... 🚀" });
-});
+const Product = mongoose.models.Product || mongoose.model('Product', ProductSchema);
 
-// READ ALL
+// --- ROUTES ---
+
+// GET ALL (Bisa filter category)
 app.get('/products', async (req, res) => {
     try {
-        const products = await Product.find();
+        const { category, search } = req.query;
+        let filter = { is_active: true };
+
+        if (category) filter.category = category;
+        if (search) filter.name = { $regex: search, $options: 'i' }; // Search case insensitive
+
+        const products = await Product.find(filter);
         res.json(products);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
 });
 
-// CREATE
+// GET ONE
+app.get('/products/:id', async (req, res) => {
+    try {
+        const product = await Product.findById(req.params.id);
+        if (!product) return res.status(404).json({ message: "Produk 404" });
+        res.json(product);
+    } catch (err) {
+        res.status(500).json({ message: "Error ID" });
+    }
+});
+
+// CREATE (Admin)
 app.post('/products', async (req, res) => {
     try {
         const product = new Product(req.body);
@@ -54,19 +64,29 @@ app.post('/products', async (req, res) => {
     }
 });
 
-// READ ONE
-app.get('/products/:id', async (req, res) => {
+// UPDATE (Admin)
+app.put('/products/:id', async (req, res) => {
     try {
-        const product = await Product.findById(req.params.id);
-        if (!product) return res.status(404).json({ message: "Produk tidak ditemukan" });
+        const product = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true });
         res.json(product);
     } catch (err) {
-        res.status(500).json({ message: "ID Produk tidak valid" });
+        res.status(500).json({ message: err.message });
     }
 });
 
-// Listener
+// DELETE (Soft Delete / Hard Delete)
+app.delete('/products/:id', async (req, res) => {
+    try {
+        await Product.findByIdAndDelete(req.params.id);
+        res.json({ message: "Produk dihapus" });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.get('/', (req, res) => res.json({ message: "Product Service Ready 🛒" }));
+
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Product Service running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Product Service running on ${PORT}`));
 
 module.exports = app;
